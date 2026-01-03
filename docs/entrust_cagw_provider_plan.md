@@ -32,43 +32,37 @@
 
 ## Provider Configuration & Security
 - `base_url` (string, required): API host including `/v1` path (US/EU examples documented).
-- `client_p12_path` (string, required): local filesystem path to PKCS#12 bundle with client cert/key.
+- `client_p12_path` (string, required): local filesystem path to the PKCS#12 bundle containing the client cert/key.
 - `client_p12_password` (sensitive string, required).
 - `tls_ca_bundle_path` (string, optional): custom trust store for enterprise proxies.
-- `proxy_url` (string, optional): HTTP(S) proxy for outbound traffic.
-- `insecure_skip_verify` (bool, default `false`): only enabled when `allow_insecure_env` env var is set to `true`; emits warnings.
-- `timeouts` block (create/read/delete durations) plus retry settings (`retry_max_attempts`, `retry_backoff` duration).
-- `correlation_id` (string, optional): global default; requests auto-generate UUIDv4 when absent, but accept per-resource overrides.
+- `proxy_url` (string, optional): HTTPS proxy for outbound calls.
+- `insecure_skip_verify` (bool, optional): development-only escape hatch; emits a warning when true.
+- `correlation_id` (string, optional): default value for the `X-Correlation-ID` header; requests auto-generate UUIDv4 when unset.
 
 **Security Guidance**
-- Store PKCS#12/password in secret managers; reference via env vars (`ENTRUST_CAGW_*`).
-- Document rotation and recommend restricted filesystem permissions.
-- Highlight risks of enabling `insecure_skip_verify` and PKCS#12 export; require explicit opt-in fields and mention audit implications.
-- Recommend using Terraform Cloud/Enterprise sensitive variables for secrets.
+- Store PKCS#12/password in secret managers or Terraform sensitive variables (`ENTRUST_CAGW_*` env vars are supported as fallbacks).
+- Document rotation cadence and recommend restricted filesystem permissions for PKCS#12 files.
+- Highlight risks of enabling `insecure_skip_verify` and PKCS#12 export; both are explicit opt-ins with provider/resource validation.
+- Recommend using Terraform Cloud/Enterprise sensitive variables or other encrypted backends for secrets and state.
 
 ## State Model & Key Handling
 - **Resource ID**: certificate `serial_number` string, stable across lifecycle/import.
-- **Inputs**: `certificate_authority_id`, `profile_id`, SAN fields, CSR PEM (sensitive), optional `pkcs12_export_enabled`, `pkcs12_passphrase`, metadata tags.
-- **Computed Attributes**: `certificate_pem`, `issuer_chain_pem`, `serial_number`, `status`, `validity_not_before`, `validity_not_after`, `subject_dn`, `subject_alt_names`, `revocation_reason`, `enrollment_id` (if returned).
-- **Sensitive Policy**: No private keys stored by default. Optional PKCS#12 output stored as sensitive base64 when user sets `pkcs12_export_enabled = true`. Document safer workflows (writing to secure storage, avoiding Terraform state for long-term key storage).
+- **Inputs**: `certificate_authority_id`, `profile_id`, SAN list, CSR PEM (sensitive), `generate_pkcs12`, `pkcs12_passphrase`, lifecycle flags (`revoke_on_destroy`, `hold_on_destroy`, `revocation_reason`), and `rotate_before_days`.
+- **Computed Attributes**: `certificate_pem`, `certificate_chain_pem`, `certificate_fingerprint_sha1`, `certificate_fingerprint_sha256`, `serial_number`, `status`, `subject_dn`, `subject_alternative_names`, `not_before`, `not_after`, `revocation_status_reason`, timestamps, optional `pkcs12_base64`.
+- **Sensitive Policy**: No private keys stored by default. Optional PKCS#12 output is stored as sensitive base64 only when `generate_pkcs12 = true`. Documentation steers users toward CSR-only issuance and secure storage for PKCS#12 artifacts.
 
 ## Implementation Plan (Go + Terraform Plugin Framework)
 1. **Provider Package Structure**
    - `cmd/terraform-provider-entrustcagw/main.go`: entry point.
    - `internal/provider`: schema, configuration parsing, diagnostics helpers.
-   - `internal/client`: PKCS#12 loader → `tls.Config`, HTTP client with retries, proxy, correlation ID middleware.
-   - `internal/api`: OpenAPI-generated client (via `oapi-codegen`) plus interface for mocking/testing.
-   - `internal/datasources` and `internal/resources` packages per entity.
-   - `internal/diag`: error normalization utilities mapping API errors → Terraform diagnostics.
+   - `internal/client`: PKCS#12 loader → `tls.Config`, handcrafted HTTP client with retries/backoff, proxy support, correlation ID middleware, and typed API helpers.
+   - `internal/datasources` and `internal/resources`: Terraform Plugin Framework implementations per entity.
+   - Shared helpers for diagnostics and CSR parsing live alongside resource packages.
 
-2. **OpenAPI Strategy**
-   - Fetch official Swagger; run `oapi-codegen` with custom templates to produce typed clients and models.
-   - Wrap generated client with small façade enforcing context deadlines, logging, and correlation headers.
-
-3. **Error Handling / Diagnostics**
-   - Normalize HTTP errors with structured codes/messages and include correlation ID.
-   - Map TLS/PKCS parsing failures to actionable hints (e.g., “bad password”).
-   - Use `response.Body.Close` wrappers; ensure `diag.Diagnostics` enriched with severity and remediation text.
+2. **Client/Diagnostics Strategy**
+   - Maintain the lightweight handwritten client to keep request/response handling predictable (optionally revisit OpenAPI codegen later).
+   - Normalize HTTP errors via `client.APIError`, surfacing status codes and correlation IDs in Terraform diagnostics.
+   - Continue mapping TLS/PKCS parsing failures to actionable hints (bad password, missing cert, etc.).
 
 4. **Import Support**
    - Implement `ImportState` for `entrust_cagw_certificate` that sets `serial_number` attribute and calls `Read` to populate state.
@@ -81,7 +75,8 @@
   - `ENTRUST_CAGW_CLIENT_P12_PASSWORD`
   - `ENTRUST_CAGW_TEST_CA_ID`
   - `ENTRUST_CAGW_TEST_PROFILE_ID`
-  - Optional `ENTRUST_CAGW_TEST_PKCS12_ENABLED`
+  - `ENTRUST_CAGW_TEST_CSR_PATH`
+  - Optional `ENTRUST_CAGW_TEST_PKCS12_PASS` for PKCS#12 acceptance coverage
 - **CI Pipeline**: GitHub Actions running gofmt, golangci-lint, unit tests on Go 1.21/1.22 matrix, optional acceptance job gated by secrets, release job using Goreleaser for tagged builds + Terraform Registry publishing.
 
 ## Milestones, Risks, Assumptions

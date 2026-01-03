@@ -2,7 +2,7 @@
 
 Terraform provider for automating Entrust CA Gateway (CAGW) certificate management with mutual TLS authentication.
 
-> **Status:** Experimental. Focused on provider scaffolding, TLS/authentication plumbing, and the first read-only data sources prior to implementing certificate issuance resources.
+> **Status:** Experimental. Provider configuration, read-only data sources, and the `entrust_cagw_certificate` resource (CSR issuance + lifecycle controls) are implemented; current work is focused on lifecycle hardening, retries, and developer experience.
 
 ## Features (current)
 
@@ -20,10 +20,10 @@ Terraform provider for automating Entrust CA Gateway (CAGW) certificate manageme
 
 ## Roadmap (short-term)
 
-1. Complete coverage for Entrust read-only APIs (profiles, certificates, capabilities).
-2. Implement the `entrust_cagw_certificate` resource (CSR + optional PKCS#12 issuance, revoke-on-destroy).
-3. Add unit tests for provider config, TLS loader, and each data source using `httptest.Server`.
-4. Wire up acceptance tests gated behind environment variables for real tenants.
+1. Finish lifecycle guardrails: rotation thresholds (`rotate_before_days`), revoke vs hold semantics, revocation reason enums, and idempotent destroy.
+2. Add validate-only/check mode and richer plan-time diagnostics powered by profile/capabilities.
+3. Extend acceptance coverage (PKCS#12, hold vs revoke, import) and publish “golden” examples/modules.
+4. Harden HTTP client retries/backoff, surface correlation IDs in diagnostics, and document observability hooks.
 
 See the detailed plan in `docs/entrust_cagw_provider_plan.md` for full milestones and epics.
 
