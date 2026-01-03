@@ -9,8 +9,12 @@ import (
 	"github.com/hashicorp/terraform-plugin-framework/resource"
 
 	"github.com/entrust/terraform-provider-entrustcagw/internal/client"
+	"github.com/entrust/terraform-provider-entrustcagw/internal/datasources/capabilities"
 	certificateauthorities "github.com/entrust/terraform-provider-entrustcagw/internal/datasources/certificateauthorities"
+	"github.com/entrust/terraform-provider-entrustcagw/internal/datasources/certificates"
 	"github.com/entrust/terraform-provider-entrustcagw/internal/datasources/ping"
+	"github.com/entrust/terraform-provider-entrustcagw/internal/datasources/profiles"
+	"github.com/entrust/terraform-provider-entrustcagw/internal/resources/certificate"
 )
 
 // Ensure entrustProvider satisfies the provider.Provider interface.
@@ -116,9 +120,15 @@ func (p *entrustProvider) DataSources(_ context.Context) []func() datasource.Dat
 		ping.New,
 		certificateauthorities.NewList,
 		certificateauthorities.NewAuthority,
+		profiles.NewList,
+		profiles.New,
+		certificates.New,
+		capabilities.New,
 	}
 }
 
 func (p *entrustProvider) Resources(_ context.Context) []func() resource.Resource {
-	return []func() resource.Resource{}
+	return []func() resource.Resource{
+		certificate.New,
+	}
 }
