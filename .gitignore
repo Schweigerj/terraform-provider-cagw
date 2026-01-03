@@ -1,0 +1,12 @@
+# Build artifacts
+bin/
+
+# Go tooling caches (redirected in this repo for sandboxed environments)
+.gocache/
+.gopath/
+.gomodcache/
+
+# IDE / editor cruft
+.DS_Store
+.vscode/
+.idea/
